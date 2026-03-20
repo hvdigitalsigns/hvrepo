@@ -7,17 +7,17 @@ export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 // Avoid crashing at module import time in dev environments where env vars
 // haven't been configured yet. Requests will fail until env vars are set.
-const safeUrl = supabaseUrl ?? "https://invalid.supabase.co";
-const safeAnonKey = supabaseAnonKey ?? "invalid-anon-key";
+const safeUrl = supabaseUrl && supabaseUrl.trim().length > 0 ? supabaseUrl : "https://invalid.supabase.co";
+const safeAnonKey = supabaseAnonKey && supabaseAnonKey.trim().length > 0 ? supabaseAnonKey : "invalid-anon-key";
 
 export const supabase = createClient(
   safeUrl,
   safeAnonKey,
   {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
     },
   }
 );

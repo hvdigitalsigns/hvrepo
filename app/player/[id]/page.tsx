@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 
 function getUrlExt(url: string) {
@@ -25,6 +26,8 @@ export default function PlayerPage() {
   const id = params?.id;
 
   const [name, setName] = useState<string>("");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [isPaired, setIsPaired] = useState<boolean>(false);
   const [currentContentUrl, setCurrentContentUrl] = useState<string | null>(null);
 
   const kind = useMemo(() => inferKind(currentContentUrl), [currentContentUrl]);
@@ -47,7 +50,7 @@ export default function PlayerPage() {
     (async () => {
       const { data, error } = await supabase
         .from("screens")
-        .select("id,name,current_content_url")
+        .select("id,name,pairing_code,is_paired,current_content_url")
         .eq("id", id)
         .single();
 
@@ -55,6 +58,8 @@ export default function PlayerPage() {
       if (error) return;
 
       setName(data?.name ?? "");
+      setPairingCode(data?.pairing_code ?? null);
+      setIsPaired(Boolean(data?.is_paired));
       setCurrentContentUrl(data?.current_content_url ?? null);
     })();
 
@@ -78,10 +83,12 @@ export default function PlayerPage() {
           filter: `id=eq.${id}`,
         },
         (payload) => {
-          const newRow = (payload as any)?.new;
+          const newRow = (payload as Record<string, any>)?.new;
           const nextUrl = newRow?.current_content_url ?? null;
           setCurrentContentUrl(typeof nextUrl === "string" ? nextUrl : null);
           if (typeof newRow?.name === "string") setName(newRow.name);
+          if (typeof newRow?.pairing_code === "string") setPairingCode(newRow.pairing_code);
+          if (typeof newRow?.is_paired === "boolean") setIsPaired(newRow.is_paired);
         }
       )
       .on(
@@ -93,10 +100,12 @@ export default function PlayerPage() {
           filter: `id=eq.${id}`,
         },
         (payload) => {
-          const newRow = (payload as any)?.new;
+          const newRow = (payload as Record<string, any>)?.new;
           const nextUrl = newRow?.current_content_url ?? null;
           setCurrentContentUrl(typeof nextUrl === "string" ? nextUrl : null);
           if (typeof newRow?.name === "string") setName(newRow.name);
+          if (typeof newRow?.pairing_code === "string") setPairingCode(newRow.pairing_code);
+          if (typeof newRow?.is_paired === "boolean") setIsPaired(newRow.is_paired);
         }
       );
 
@@ -108,30 +117,57 @@ export default function PlayerPage() {
   }, [id]);
 
   const altText = name?.trim() ? name : "Digital signage screen";
+  const showContent = isPaired && Boolean(currentContentUrl);
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden cursor-none">
-      {currentContentUrl ? (
-        kind === "video" ? (
-          <video
-            key={currentContentUrl}
-            src={currentContentUrl}
-            autoPlay
-            muted
-            playsInline
-            loop
-            className="h-full w-full object-contain"
-          />
+    <div className="fixed inset-0 bg-black overflow-hidden cursor-none no-scrollbar">
+      <AnimatePresence mode="wait">
+        {!showContent ? (
+          <motion.div
+            key="pairing"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="h-full w-full flex flex-col items-center justify-center text-white px-6"
+          >
+            <div className="text-3xl md:text-4xl font-light tracking-tight mb-10">HVStudio</div>
+            <div className="text-7xl md:text-8xl font-extralight tracking-[0.2em] mb-6">
+              {(pairingCode ?? "------").slice(0, 6)}
+            </div>
+            <div className="text-sm md:text-base text-slate-300 font-light tracking-wide">
+              Waiting for pairing at hvstudio.com
+            </div>
+          </motion.div>
         ) : (
-          <img
-            key={currentContentUrl}
-            src={currentContentUrl}
-            alt={altText}
-            className="h-full w-full object-contain select-none pointer-events-none"
-            draggable={false}
-          />
-        )
-      ) : null}
+          <motion.div
+            key={currentContentUrl ?? "content"}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="h-full w-full"
+          >
+            {kind === "video" ? (
+              <video
+                src={currentContentUrl ?? ""}
+                autoPlay
+                muted
+                playsInline
+                loop
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <img
+                src={currentContentUrl ?? ""}
+                alt={altText}
+                className="h-full w-full object-cover select-none pointer-events-none"
+                draggable={false}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
