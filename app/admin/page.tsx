@@ -6,15 +6,13 @@ import Image from "next/image";
 import { toast } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Monitor,
-  Upload,
-  Video,
-  Image as ImageIcon,
+  ChevronRight,
   Link2,
   X,
   RefreshCcw,
   CloudUpload,
   PlaySquare,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -48,7 +46,6 @@ function inferKind(url: string | null): "video" | "image" | null {
   const ext = getUrlExt(url);
   if (ext === "mp4") return "video";
   if (ext === "png" || ext === "jpg" || ext === "jpeg") return "image";
-  // Unknown types: treat as image to keep it simple for the operator.
   return "image";
 }
 
@@ -60,14 +57,12 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [loading, setLoading] = useState(true);
   const [isPairModalOpen, setIsPairModalOpen] = useState(false);
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
+  const [targetScreenId, setTargetScreenId] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState("");
   const [isDragActive, setIsDragActive] = useState(false);
-  const [uploadingScreenId, setUploadingScreenId] = useState<string | null>(null);
-  const [quickUploading, setQuickUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  const [activeUploadScreenId, setActiveUploadScreenId] = useState<string | null>(null);
-  const progressTimerRef = useRef<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [quickUploadProgress, setQuickUploadProgress] = useState(0);
+  const quickProgressTimerRef = useRef<number | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasSupabaseConfig = useMemo(() => {
@@ -141,76 +136,11 @@ export default function AdminPage() {
     };
   }, [hasSupabaseConfig, router]);
 
-  function startUploadProgress(screenId: string) {
-    setUploadingScreenId(screenId);
-    setUploadProgress((prev) => ({ ...prev, [screenId]: 8 }));
-    progressTimerRef.current = window.setInterval(() => {
-      setUploadProgress((prev) => {
-        const current = prev[screenId] ?? 8;
-        const next = Math.min(current + 7, 92);
-        return { ...prev, [screenId]: next };
-      });
-    }, 250);
-  }
-
-  function finishUploadProgress(screenId: string) {
-    if (progressTimerRef.current) {
-      window.clearInterval(progressTimerRef.current);
-      progressTimerRef.current = null;
-    }
-    setUploadProgress((prev) => ({ ...prev, [screenId]: 100 }));
-    window.setTimeout(() => {
-      setUploadProgress((prev) => ({ ...prev, [screenId]: 0 }));
-      setUploadingScreenId((prev) => (prev === screenId ? null : prev));
-    }, 600);
-  }
-
-  async function uploadAndSync(screenId: string, file: File) {
-    startUploadProgress(screenId);
-    const toastUploadId = toast.loading("Uploading media…");
-
-    const storagePath = `screens/${screenId}/${Date.now()}_${file.name}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("media")
-      .upload(storagePath, file, {
-        contentType: file.type,
-        upsert: true,
-      });
-
-    if (uploadError) {
-      finishUploadProgress(screenId);
-      toast.error(uploadError.message, { id: toastUploadId });
-      return;
-    }
-
-    // Assumes bucket `media` is public. If it's private, switch to signed URLs.
-    const { data: publicUrlData } = supabase.storage.from("media").getPublicUrl(storagePath);
-    const publicUrl = publicUrlData.publicUrl;
-    const contentType = inferKind(publicUrl) === "video" ? "video" : "image";
-
-    toast.success("Upload complete", { id: toastUploadId });
-
-    const toastSyncId = toast.loading("Syncing screen…");
-    const { error: syncError } = await supabase
-      .from("screens")
-      .update({ current_content_url: publicUrl, content_type: contentType })
-      .eq("id", screenId);
-
-    if (syncError) {
-      finishUploadProgress(screenId);
-      toast.error(syncError.message, { id: toastSyncId });
-      return;
-    }
-
-    finishUploadProgress(screenId);
-    toast.success("Screen synced", { id: toastSyncId });
-    if (userId) await loadScreens(userId);
-    await loadMediaLibrary();
-  }
-
   async function quickUpload(file: File) {
-    setQuickUploading(true);
+    setQuickUploadProgress(7);
+    quickProgressTimerRef.current = window.setInterval(() => {
+      setQuickUploadProgress((prev) => Math.min(prev + 6, 90));
+    }, 220);
     const toastId = toast.loading("Uploading media…");
     const storagePath = `${Date.now()}_${file.name}`;
     const { error } = await supabase.storage.from("media").upload(storagePath, file, {
@@ -218,13 +148,22 @@ export default function AdminPage() {
       upsert: true,
     });
     if (error) {
-      setQuickUploading(false);
+      if (quickProgressTimerRef.current) {
+        window.clearInterval(quickProgressTimerRef.current);
+        quickProgressTimerRef.current = null;
+      }
+      setQuickUploadProgress(0);
       toast.error(error.message, { id: toastId });
       return;
     }
-    setQuickUploading(false);
+    if (quickProgressTimerRef.current) {
+      window.clearInterval(quickProgressTimerRef.current);
+      quickProgressTimerRef.current = null;
+    }
+    setQuickUploadProgress(100);
     toast.success("Uploaded to media library", { id: toastId });
     await loadMediaLibrary();
+    window.setTimeout(() => setQuickUploadProgress(0), 500);
   }
 
   async function pairDevice() {
@@ -292,6 +231,20 @@ export default function AdminPage() {
     await loadScreens(userId);
   }
 
+  async function pushToSingleScreen(item: MediaItem, screenId: string) {
+    const contentType = item.kind === "video" ? "video" : "image";
+    const { error } = await supabase
+      .from("screens")
+      .update({ current_content_url: item.publicUrl, content_type: contentType })
+      .eq("id", screenId);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Screen updated");
+    if (userId) await loadScreens(userId);
+  }
+
   async function nudgeScreen(screenId: string) {
     const { error } = await supabase
       .from("screens")
@@ -310,21 +263,8 @@ export default function AdminPage() {
   }
 
   function onPickFile(screenId: string) {
-    setActiveUploadScreenId(screenId);
-    fileInputRef.current?.click();
-  }
-
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    const screenId = activeUploadScreenId;
-
-    // Reset input so selecting the same file again still triggers `onChange`.
-    e.target.value = "";
-
-    if (!file || !screenId) return;
-    uploadAndSync(screenId, file).catch((err) => {
-      toast.error(err?.message ?? "Upload failed");
-    });
+    setTargetScreenId(screenId);
+    setIsPickerModalOpen(true);
   }
 
   function onQuickUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -349,105 +289,84 @@ export default function AdminPage() {
     );
   }
 
+  const liveCount = screens.filter((screen) => isOnline(screen.last_ping)).length;
+  const offlineCount = Math.max(screens.length - liveCount, 0);
+  const engagementBars = [32, 46, 61, 52, 75, 88, 67];
+
   return (
-    <div className="min-h-screen bg-[#f5f5f3] text-[#1f1e1c] no-scrollbar overflow-auto">
-      <header className="max-w-7xl mx-auto px-4 md:px-8 py-6 border-b border-[#e7e4dc]">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-[#F5F5F7] text-[#1f1e1c] no-scrollbar overflow-auto [font-family:Inter,system-ui,sans-serif]">
+      <header className="max-w-7xl mx-auto px-4 md:px-8 py-5">
+        <div className="flex items-center justify-between gap-4 border-b border-[#e7e4dd] pb-4">
+          <div className="flex items-center gap-8 min-w-0">
             <div>
-              <div className="text-2xl md:text-3xl font-light tracking-tight">MONARCH OS</div>
-              <div className="text-xs md:text-sm text-[#7a766d] font-light">
+              <div className="text-[30px] leading-none tracking-tight [font-family:'Playfair Display',Georgia,serif]">
+                Galacreate
+              </div>
+              <div className="text-[11px] md:text-xs text-[#7a766d] font-light truncate mt-1">
                 Powered by HV Digital Signs
               </div>
             </div>
+            <nav className="hidden md:flex items-center gap-6 text-[12px] tracking-[0.12em] uppercase text-[#7f7a71]">
+              <span className="text-[#272521]">Dashboard</span>
+              <span>Media Library</span>
+              <span>Screens</span>
+            </nav>
           </div>
 
           <button
             onClick={() => setIsPairModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-[#b49a61] bg-[#b49a61] text-white px-5 py-2 text-sm font-light hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-full border border-[#C5A059] bg-[#C5A059] text-white px-5 py-2 text-sm font-medium shadow-[0_8px_20px_rgba(197,160,89,0.28)] hover:opacity-90"
           >
             <Link2 className="h-4 w-4" />
-            Pair Screen
+            + Pair New Display
           </button>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-8 grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <section className="xl:col-span-5 rounded-3xl bg-white shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-6 border border-[#ece8de]">
-          <div className="text-xs uppercase tracking-[0.2em] text-[#7c786d] mb-3">Your Screens</div>
-          <div className="text-3xl font-light mb-4">{loading ? "..." : screens.length} Active Screens</div>
-          <div className="space-y-3">
-            {screens.map((screen) => {
-              const online = isOnline(screen.last_ping);
-              const contentLabel = screen.current_content_url
-                ? screen.current_content_url.split("/").pop()
-                : "No content selected";
-              return (
-                <div
-                  key={screen.id}
-                  className="rounded-2xl border border-[#ece8de] bg-[#fbfaf7] p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <input
-                        defaultValue={screen.name?.trim() || "Untitled Screen"}
-                        onBlur={(e) => {
-                          updateName(screen.id, e.target.value).catch(() => toast.error("Name update failed"));
-                        }}
-                        className="bg-transparent border-none p-0 text-lg font-light outline-none"
-                      />
-                      <div className="flex items-center gap-2 text-sm mt-1">
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${online ? "bg-emerald-500" : "bg-red-500"}`}
-                        />
-                        <span className={online ? "text-emerald-700" : "text-red-700"}>
-                          {online ? "Online" : "Offline"}
-                        </span>
-                      </div>
-                      <div className="text-xs text-[#7b776f] mt-1 truncate max-w-[320px]">
-                        Now Playing: {contentLabel}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => nudgeScreen(screen.id).catch(() => toast.error("Refresh failed"))}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#e4dfd3] bg-white px-3 py-1.5 text-xs hover:bg-[#f7f5ef]"
-                      >
-                        <RefreshCcw className="h-3 w-3" />
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => onPickFile(screen.id)}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#b49a61] bg-[#b49a61] text-white px-3 py-1.5 text-xs hover:opacity-90"
-                      >
-                        <Upload className="h-3 w-3" />
-                        Change
-                      </button>
-                    </div>
-                  </div>
-                  {uploadingScreenId === screen.id && (
-                    <div className="mt-3 h-1.5 w-full rounded bg-[#ebe7dc] overflow-hidden">
-                      <motion.div
-                        className="h-full bg-[#b49a61]"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${uploadProgress[screen.id] ?? 0}%` }}
-                        transition={{ ease: "easeOut", duration: 0.2 }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {!loading && screens.length === 0 ? (
-              <div className="rounded-2xl border border-[#ece8de] bg-[#fbfaf7] p-5 text-sm text-[#7a766d]">
-                No screens paired yet. Click "Pair Screen" to connect your first TV.
-              </div>
-            ) : null}
+        <aside className="xl:col-span-2 hidden xl:block">
+          <div className="rounded-[28px] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.06)] border border-[#eceaf0] p-4 space-y-2">
+            <div className="text-sm font-medium px-3 py-2 rounded-xl bg-[#f6f3ec] text-[#2e2a23]">Dashboard</div>
+            <div className="text-sm font-light px-3 py-2 rounded-xl text-[#7f7a71]">Media Library</div>
+            <div className="text-sm font-light px-3 py-2 rounded-xl text-[#7f7a71]">Screens</div>
+            <div className="text-sm font-light px-3 py-2 rounded-xl text-[#7f7a71]">Settings</div>
           </div>
-        </section>
+        </aside>
 
-        <section className="xl:col-span-7 rounded-3xl bg-white shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-6 border border-[#ece8de]">
-          <div className="text-xs uppercase tracking-[0.2em] text-[#7c786d] mb-3">Quick Upload</div>
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="xl:col-span-6 rounded-[28px] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.07)] p-6 border border-[#eceaf0]"
+        >
+          <div className="text-xs uppercase tracking-[0.2em] text-[#807b73] mb-2">Commander</div>
+          <div className="text-[34px] leading-tight font-semibold mb-6">Your Displays</div>
+          <div className="flex flex-wrap items-center gap-7">
+            <div>
+              <div className="text-5xl font-semibold leading-none">{liveCount}</div>
+              <div className="mt-2 flex items-center gap-2 text-sm text-[#4a6c5b]">
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#10B981] opacity-70" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-[#10B981]" />
+                </span>
+                Live in Canada
+              </div>
+            </div>
+            <div>
+              <div className="text-5xl font-semibold leading-none">{offlineCount}</div>
+              <div className="mt-2 text-sm text-[#8a8680]">Offline</div>
+            </div>
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          className="xl:col-span-4 rounded-[28px] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.07)] p-6 border border-[#eceaf0]"
+        >
+          <div className="text-xs uppercase tracking-[0.2em] text-[#807b73] mb-2">Quick Upload</div>
+          <div className="text-2xl font-semibold mb-3">Add to Gallery</div>
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -461,34 +380,32 @@ export default function AdminPage() {
               if (!file) return;
               quickUpload(file).catch(() => toast.error("Upload failed"));
             }}
-            className={`rounded-3xl border-2 border-dashed p-10 md:p-14 text-center transition ${
-              isDragActive ? "border-[#b49a61] bg-[#fbf8ef]" : "border-[#e8e3d8] bg-[#faf9f4]"
+            className={`rounded-2xl border-2 border-dashed p-8 text-center transition ${
+              isDragActive ? "border-[#C5A059] bg-[#fcf8f0]" : "border-[#ece7dc] bg-[#faf8f4]"
             }`}
           >
-            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-white border border-[#e6e0d5] flex items-center justify-center">
-              <CloudUpload className="h-5 w-5 text-[#6f6a60]" />
+            <div className="mx-auto mb-3 h-11 w-11 rounded-full bg-white border border-[#ece7dc] flex items-center justify-center">
+              <CloudUpload className="h-5 w-5 text-[#8b8477]" />
             </div>
-            <div className="text-2xl font-light mb-2">Drag &amp; Drop your 4K Wedding Video</div>
-            <div className="text-sm text-[#78746a] mb-6">Drop File Here or select from your device</div>
+            <div className="text-lg font-medium">Drag &amp; Drop your 4K Wedding Video</div>
+            <div className="text-sm text-[#7f7a71] mt-1 mb-4">mp4 / png / jpg</div>
             <button
               onClick={() => quickUploadInputRef.current?.click()}
-              className="inline-flex items-center rounded-full border border-[#d7d0c3] bg-white px-5 py-2 text-sm hover:bg-[#f6f4ed]"
+              className="inline-flex items-center rounded-full border border-[#dfd7c8] bg-white px-4 py-2 text-sm hover:bg-[#f7f3ec]"
             >
-              Select Files
+              Select File
             </button>
-            {quickUploading ? (
-              <div className="mt-4 text-sm text-[#7d786f]">Uploading...</div>
-            ) : null}
+            <div className="mt-5 h-1.5 w-full rounded bg-[#ece7dc] overflow-hidden">
+              <motion.div
+                className="h-full bg-[#C5A059]"
+                initial={{ width: 0 }}
+                animate={{ width: `${quickUploadProgress}%` }}
+                transition={{ duration: 0.25 }}
+              />
+            </div>
           </div>
-        </section>
+        </motion.section>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*"
-          className="hidden"
-          onChange={onFileChange}
-        />
         <input
           ref={quickUploadInputRef}
           type="file"
@@ -497,32 +414,180 @@ export default function AdminPage() {
           onChange={onQuickUploadChange}
         />
 
-        <section className="xl:col-span-12 rounded-3xl bg-white shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-6 border border-[#ece8de]">
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.1 }}
+          className="xl:col-span-10 xl:col-start-3 rounded-[28px] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.07)] p-6 border border-[#eceaf0]"
+        >
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <div className="text-xs uppercase tracking-[0.2em] text-[#807b73] mb-1">Screen List</div>
+              <div className="text-2xl font-semibold">Your Screens</div>
+            </div>
+            <button
+              onClick={() => (userId ? loadScreens(userId) : Promise.resolve())}
+              className="inline-flex items-center gap-2 rounded-full border border-[#e8e3d8] bg-white px-4 py-2 text-sm hover:bg-[#f8f6f1]"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Sync
+            </button>
+          </div>
+          <div className="space-y-3">
+            {screens.map((screen) => {
+              const online = isOnline(screen.last_ping);
+              const displayName = screen.name?.trim() || "Main Ballroom Entrance";
+              const nowPlaying = screen.current_content_url?.split("/").pop() ?? "No content selected";
+              return (
+                <motion.div
+                  key={screen.id}
+                  layout
+                  className="rounded-2xl border border-[#ece7dd] bg-[#faf9f5] p-4"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center gap-4">
+                    <div className="w-full md:w-[260px] h-[146px] rounded-xl overflow-hidden bg-[#ece7dd] shrink-0">
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={screen.current_content_url ?? `empty-${screen.id}`}
+                          initial={{ opacity: 0.2 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0.2 }}
+                          transition={{ duration: 0.35 }}
+                          className="h-full w-full"
+                        >
+                          {screen.current_content_url ? (
+                            inferKind(screen.current_content_url) === "video" ? (
+                              <video
+                                src={screen.current_content_url}
+                                className="h-full w-full object-cover"
+                                muted
+                                playsInline
+                                loop
+                              />
+                            ) : (
+                              <Image
+                                src={screen.current_content_url}
+                                alt={displayName}
+                                width={520}
+                                height={292}
+                                className="h-full w-full object-cover"
+                                unoptimized
+                              />
+                            )
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center text-[#8f8779] text-sm">
+                              No Preview
+                            </div>
+                          )}
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <input
+                        defaultValue={displayName}
+                        onBlur={(e) => {
+                          updateName(screen.id, e.target.value).catch(() => toast.error("Name update failed"));
+                        }}
+                        className="bg-transparent border-none p-0 text-xl font-medium outline-none"
+                      />
+                      <div className="mt-2 flex items-center gap-2 text-sm">
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${online ? "bg-[#10B981]" : "bg-red-500"}`}
+                        />
+                        <span className={online ? "text-[#0f7d62]" : "text-red-600"}>
+                          {online ? "Online" : "Offline"}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm text-[#807b73] truncate">Now Playing: {nowPlaying}</div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => nudgeScreen(screen.id).catch(() => toast.error("Refresh failed"))}
+                        className="inline-flex items-center justify-center rounded-full border border-[#e0d9ca] bg-white h-9 w-9 hover:bg-[#f7f4ee]"
+                        aria-label="Refresh screen"
+                      >
+                        <RefreshCcw className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => onPickFile(screen.id)}
+                        className="inline-flex items-center gap-2 rounded-full border border-[#C5A059] bg-[#C5A059] text-white px-4 py-2 text-sm hover:opacity-90"
+                      >
+                        Change Content
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.15 }}
+          className="xl:col-span-4 xl:col-start-3 rounded-[28px] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.07)] p-6 border border-[#eceaf0]"
+        >
+          <div className="text-xs uppercase tracking-[0.2em] text-[#807b73] mb-1">Guest Stream Analytics</div>
+          <div className="text-2xl font-semibold mb-5">Guest Engagement</div>
+          <div className="h-48 rounded-2xl bg-[#faf8f4] border border-[#ece7dd] p-4 flex items-end gap-2">
+            {engagementBars.map((value, idx) => (
+              <motion.div
+                key={`bar-${idx}`}
+                initial={{ height: 0 }}
+                animate={{ height: `${value}%` }}
+                transition={{ duration: 0.45, delay: idx * 0.04 }}
+                className="flex-1 rounded-t-lg bg-gradient-to-t from-[#C5A059] to-[#e1cca3]"
+              />
+            ))}
+          </div>
+          <div className="mt-3 text-sm text-[#807b73]">
+            {mediaItems.length * 12 + liveCount * 7} photos/videos beamed today.
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.2 }}
+          className="xl:col-span-6 rounded-[28px] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.07)] p-6 border border-[#eceaf0]"
+        >
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-[#7c786d] mb-1">Recent Content</div>
-              <div className="text-2xl font-light">Media Library</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-[#807b73] mb-1">Media Library</div>
+              <div className="text-2xl font-semibold">Master Gallery</div>
             </div>
+            <Sparkles className="h-5 w-5 text-[#C5A059]" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {mediaItems.map((item) => (
-              <div key={item.path} className="rounded-2xl border border-[#ece8de] bg-[#fbfaf7] p-3">
-                <div className="rounded-xl overflow-hidden bg-[#ece8df] h-40 flex items-center justify-center">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {mediaItems.slice(0, 9).map((item) => (
+              <motion.div layout key={item.path} className="rounded-2xl border border-[#ece7dd] bg-[#faf9f5] p-2">
+                <div className="rounded-xl overflow-hidden bg-[#ece7dd] h-24 md:h-28">
                   {item.kind === "video" ? (
                     <video src={item.publicUrl} className="h-full w-full object-cover" muted playsInline />
                   ) : (
-                    <Image src={item.publicUrl} alt={item.name} width={480} height={240} className="h-full w-full object-cover" unoptimized />
+                    <Image
+                      src={item.publicUrl}
+                      alt={item.name}
+                      width={360}
+                      height={220}
+                      className="h-full w-full object-cover"
+                      unoptimized
+                    />
                   )}
                 </div>
-                <div className="mt-2 text-sm font-light truncate">{item.name}</div>
+                <div className="mt-2 text-xs text-[#6f6a62] truncate">{item.name}</div>
                 <button
                   onClick={() => pushToAllScreens(item).catch(() => toast.error("Push failed"))}
-                  className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-full border border-[#d7d0c3] bg-white px-4 py-2 text-xs hover:bg-[#f6f4ed]"
+                  className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-full border border-[#dfd8ca] bg-white px-3 py-1.5 text-[11px] hover:bg-[#f7f4ee]"
                 >
                   <PlaySquare className="h-3.5 w-3.5" />
-                  Push to All Screens
+                  Push to All
                 </button>
-              </div>
+              </motion.div>
             ))}
             {mediaItems.length === 0 ? (
               <div className="col-span-full text-sm text-[#7a766d] rounded-2xl border border-[#ece8de] bg-[#fbfaf7] p-6">
@@ -530,7 +595,7 @@ export default function AdminPage() {
               </div>
             ) : null}
           </div>
-        </section>
+        </motion.section>
       </div>
 
       <AnimatePresence>
@@ -549,7 +614,7 @@ export default function AdminPage() {
               className="w-full max-w-md rounded-2xl border border-[#e5e0d5] bg-white p-5"
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="text-lg font-light tracking-tight">Pair Screen</div>
+                <div className="text-lg font-medium tracking-tight">Pair New Display</div>
                 <button
                   onClick={() => setIsPairModalOpen(false)}
                   className="rounded border border-[#e5dfd4] p-1.5 hover:bg-[#f8f6ef]"
@@ -572,6 +637,66 @@ export default function AdminPage() {
               >
                 Pair Screen
               </button>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isPickerModalOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/65 flex items-center justify-center px-4 z-50"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-3xl rounded-2xl border border-[#e5e0d5] bg-white p-5"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="text-lg font-medium">Change Content</div>
+                  <div className="text-sm text-[#7f7a71]">Pick an item from Master Gallery.</div>
+                </div>
+                <button
+                  onClick={() => setIsPickerModalOpen(false)}
+                  className="rounded border border-[#e5dfd4] p-1.5 hover:bg-[#f8f6ef]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[60vh] overflow-auto no-scrollbar">
+                {mediaItems.map((item) => (
+                  <button
+                    key={`picker-${item.path}`}
+                    onClick={() => {
+                      if (!targetScreenId) return;
+                      pushToSingleScreen(item, targetScreenId).finally(() => setIsPickerModalOpen(false));
+                    }}
+                    className="rounded-2xl border border-[#ece7dd] bg-[#faf9f5] p-2 text-left hover:bg-[#f4f1ea]"
+                  >
+                    <div className="rounded-xl overflow-hidden bg-[#ece7dd] h-24">
+                      {item.kind === "video" ? (
+                        <video src={item.publicUrl} className="h-full w-full object-cover" muted playsInline />
+                      ) : (
+                        <Image
+                          src={item.publicUrl}
+                          alt={item.name}
+                          width={360}
+                          height={220}
+                          className="h-full w-full object-cover"
+                          unoptimized
+                        />
+                      )}
+                    </div>
+                    <div className="mt-2 text-xs truncate text-[#6e6960]">{item.name}</div>
+                  </button>
+                ))}
+              </div>
             </motion.div>
           </motion.div>
         ) : null}
