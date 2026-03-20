@@ -17,6 +17,7 @@ import {
   RefreshCw,
   X,
   Plus,
+  WifiOff,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -293,15 +294,15 @@ export default function AdminPage() {
     );
   }
 
-  const displayCount = loading ? "—" : String(screens.length);
+  const displayCount = loading ? "—" : String(Math.max(screens.length, 0));
   const syncHealth = "99.9%";
 
   return (
-    <div className="min-h-screen bg-monarch-bg text-[#222] overflow-x-hidden no-scrollbar [font-family:var(--font-inter),system-ui,sans-serif]">
-      {/* Fixed sidebar */}
+    <div className="min-h-screen bg-[#F8F7F5] text-[#222] overflow-x-hidden no-scrollbar [font-family:var(--font-inter),system-ui,sans-serif]">
+      {/* Fixed sidebar — slim, active = gold accent */}
       <aside className="fixed left-0 top-0 z-40 flex h-screen w-[220px] flex-col border-r border-[#e8e5df] bg-[#faf9f7] px-3 py-6">
         <div className="px-2">
-          <div className="font-[family-name:var(--font-playfair),Georgia,serif] text-[22px] font-semibold italic text-monarch-gold">
+          <div className="font-[family-name:var(--font-playfair),Georgia,serif] text-[22px] font-semibold not-italic text-[#C5A059]">
             MONARCH OS
           </div>
           <div className="mt-1 text-xs text-[#6b6560]">Digital Curator</div>
@@ -309,35 +310,35 @@ export default function AdminPage() {
         <nav className="mt-8 flex flex-1 flex-col gap-1 px-1">
           <button
             type="button"
-            className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-sm text-[#2a2723] shadow-sm"
+            className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-sm font-medium text-[#C5A059] shadow-sm"
           >
-            <LayoutDashboard className="h-5 w-5 text-[#8a847a]" /> Dashboard
+            <LayoutDashboard className="h-5 w-5 text-[#C5A059]" strokeWidth={1.75} /> Dashboard
           </button>
           <button
             type="button"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#6b6560] transition hover:bg-white/60"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#8a847a] transition hover:bg-white/70"
           >
-            <Film className="h-5 w-5 text-[#a39e94]" /> Media Library
+            <Film className="h-5 w-5 text-[#a39e94]" strokeWidth={1.5} /> Media Library
           </button>
           <button
             type="button"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#6b6560] transition hover:bg-white/60"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#8a847a] transition hover:bg-white/70"
           >
-            <Monitor className="h-5 w-5 text-[#a39e94]" /> Screens
+            <Monitor className="h-5 w-5 text-[#a39e94]" strokeWidth={1.5} /> Screens
           </button>
           <button
             type="button"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#6b6560] transition hover:bg-white/60"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#8a847a] transition hover:bg-white/70"
           >
-            <Settings className="h-5 w-5 text-[#a39e94]" /> Settings
+            <Settings className="h-5 w-5 text-[#a39e94]" strokeWidth={1.5} /> Settings
           </button>
         </nav>
         <div className="mt-auto flex items-center gap-3 rounded-2xl bg-[#ece8df] px-3 py-3 text-xs text-[#5c574e]">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d4cfc4]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d4cfc4]">
             <User className="h-4 w-4" />
           </div>
           <div>
-            <div className="font-medium">Curator Workspace</div>
+            <div className="font-semibold">Curator Workspace</div>
             <div className="text-[10px] text-[#7a766d]">Premium Access</div>
           </div>
         </div>
@@ -345,16 +346,16 @@ export default function AdminPage() {
 
       {/* Main column */}
       <div className="pl-[220px]">
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#e8e5df] bg-monarch-bg/95 px-8 backdrop-blur-sm">
-          <div className="font-[family-name:var(--font-playfair),Georgia,serif] text-[26px] font-semibold text-monarch-gold">
+        {/* Header — Playfair 600 gold, nav active state */}
+        <header className="sticky top-0 z-30 flex h-[60px] items-center justify-between border-b border-[#e8e5df] bg-[#F8F7F5]/95 px-8 backdrop-blur-sm">
+          <div className="font-[family-name:var(--font-playfair),Georgia,serif] text-[24px] font-semibold leading-none text-[#C5A059]">
             MONARCH OS
           </div>
-          <nav className="hidden items-center gap-10 md:flex">
-            {["DASHBOARD", "MEDIA LIBRARY", "SCREENS"].map((label) => (
+          <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-10 md:flex">
+            {(["DASHBOARD", "MEDIA LIBRARY", "SCREENS"] as const).map((label, i) => (
               <span
                 key={label}
-                className="text-sm font-medium tracking-widest text-[#666]"
+                className={`text-sm font-medium tracking-widest ${i === 0 ? "text-[#333]" : "text-[#666]"}`}
               >
                 {label}
               </span>
@@ -386,17 +387,28 @@ export default function AdminPage() {
               className="rounded-[28px] border border-[#ebe8e2] bg-white p-8 shadow-[0_8px_30px_rgba(0,0,0,0.06)]"
             >
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#888]">
-                System Status
+                Network Health
               </div>
-              <h2 className="mt-2 text-sm font-semibold text-[#444]">Active Displays</h2>
-              <div className="mt-4 text-7xl font-semibold tabular-nums text-[#1a1a1a]">{displayCount}</div>
-              <div className="mt-6 flex items-center gap-3 text-sm text-[#2d7a5f]">
-                <span className="relative flex h-3 w-3">
+              <div className="mt-3 flex flex-wrap items-baseline gap-2">
+                <span className="text-6xl font-semibold tabular-nums leading-none text-[#1a1a1a]">{displayCount}</span>
+                <span className="text-lg font-medium text-[#444]">Active Screens</span>
+              </div>
+              <div className="mt-5 flex items-center gap-2 text-sm font-medium text-[#1b7f61]">
+                <span className="relative flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
                 </span>
-                <Network className="h-4 w-4 text-[#666]" />
+                System Online &amp; Optimized
+              </div>
+              <div className="mt-6 flex items-center gap-2 text-sm text-[#444]">
+                <Network className="h-4 w-4 shrink-0 text-[#666]" />
                 <span>Global Sync Health {syncHealth}</span>
+              </div>
+              <div className="mt-8 flex items-center justify-between border-t border-[#f0ede6] pt-4 text-xs text-[#777269]">
+                <span>Last Update: Just Now</span>
+                <button type="button" className="font-medium text-[#C5A059] hover:underline">
+                  View Global Map
+                </button>
               </div>
             </motion.div>
 
@@ -418,25 +430,27 @@ export default function AdminPage() {
                   if (!file) return;
                   quickUpload(file).catch(() => toast.error("Upload failed"));
                 }}
-                className={`flex min-h-[240px] flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
-                  isDragActive ? "border-monarch-gold bg-[#fffbf5]" : "border-[#E5E7EB] bg-[#fafaf8]"
+                className={`flex min-h-[260px] flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+                  isDragActive ? "border-[#C5A059] bg-[#fffdf9]" : "border-[#E5E7EB] bg-[#fafaf8]"
                 }`}
               >
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#f0ebe3]">
-                  <CloudUpload className="h-7 w-7 text-[#6b6560]" />
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[#e8dcc4] bg-[#f8f3eb]">
+                  <CloudUpload className="h-8 w-8 text-[#C5A059]" strokeWidth={1.5} />
                 </div>
-                <p className="text-base font-medium text-[#333]">Drag &amp; Drop your 4K Wedding Video</p>
-                <p className="mt-2 text-sm text-[#777]">Supports MP4, PNG, JPG</p>
+                <p className="text-lg font-semibold text-[#2a2723]">Drag &amp; Drop your 4K Wedding Video</p>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-[#6b6560]">
+                  Upload cinematic content directly to your digital canvas. Supported: MP4, MOV, ProRes.
+                </p>
                 <button
                   type="button"
                   onClick={() => quickUploadInputRef.current?.click()}
-                  className="mt-6 rounded-full border border-[#cfc7ba] bg-white px-8 py-2.5 text-sm font-medium text-[#444] transition hover:bg-[#f9f7f4]"
+                  className="mt-6 rounded-full border-2 border-[#C5A059] bg-transparent px-8 py-2.5 text-sm font-semibold text-[#C5A059] transition hover:bg-[#fffbf5]"
                 >
                   SELECT FILES
                 </button>
-                <div className="mt-4 h-1 w-full max-w-xs overflow-hidden rounded-full bg-[#ece8df]">
+                <div className="mt-5 h-1 w-full max-w-xs overflow-hidden rounded-full bg-[#ece8df]">
                   <motion.div
-                    className="h-full bg-monarch-gold"
+                    className="h-full bg-[#C5A059]"
                     initial={{ width: 0 }}
                     animate={{ width: `${quickUploadProgress}%` }}
                     transition={{ duration: 0.2 }}
@@ -460,8 +474,11 @@ export default function AdminPage() {
             animate={{ opacity: 1 }}
             className="rounded-[28px] border border-[#ebe8e2] bg-white p-8 shadow-[0_8px_30px_rgba(0,0,0,0.06)]"
           >
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#888]">
+              Active Curator View
+            </div>
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-              <h2 className="font-[family-name:var(--font-playfair),Georgia,serif] text-3xl font-semibold text-[#1a1a1a] md:text-4xl">
+              <h2 className="font-[family-name:var(--font-playfair),Georgia,serif] text-3xl font-semibold text-[#1a1a1a] md:text-[34px]">
                 Current Gallery Screens
               </h2>
               <button
@@ -476,20 +493,31 @@ export default function AdminPage() {
               {screens.length === 0 && !loading ? (
                 <p className="text-sm text-[#777]">No screens yet. Pair a display to get started.</p>
               ) : null}
-              {screens.map((screen) => {
+              {screens.map((screen, idx) => {
                 const online = isOnline(screen.last_ping);
                 const displayName = screen.name?.trim() || "Screen";
                 const filename =
                   screen.current_content_url?.split("/").pop()?.split("?")[0] ?? "—";
+                const loc =
+                  idx === 0
+                    ? "Main Hall · Portrait Orientation"
+                    : idx === 1
+                      ? "South Wing · Landscape Ultra-Wide"
+                      : "2nd Floor · Portrait Orientation";
                 return (
                   <motion.div
                     key={screen.id}
                     layout
-                    whileHover={{ scale: 1.002 }}
-                    className="flex flex-col gap-4 rounded-[20px] border border-[#ebe8e2] bg-white p-5 shadow-sm md:flex-row md:items-center"
+                    whileHover={{ y: -1 }}
+                    transition={{ duration: 0.2 }}
+                    className={`flex flex-col gap-4 rounded-[20px] border border-[#ebe8e2] bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.04)] md:flex-row md:items-center ${!online ? "opacity-60" : ""}`}
                   >
-                    <div className="h-24 w-40 shrink-0 overflow-hidden rounded-xl bg-[#e8e4dc]">
-                      {screen.current_content_url ? (
+                    <div className="relative h-24 w-[168px] shrink-0 overflow-hidden rounded-xl bg-[#e8e4dc]">
+                      {!online ? (
+                        <div className="flex h-full w-full flex-col items-center justify-center">
+                          <WifiOff className="h-8 w-8 text-[#9a958c]" />
+                        </div>
+                      ) : screen.current_content_url ? (
                         inferKind(screen.current_content_url) === "video" ? (
                           <video
                             src={screen.current_content_url}
@@ -502,13 +530,15 @@ export default function AdminPage() {
                           <Image
                             src={screen.current_content_url}
                             alt=""
-                            width={160}
+                            width={168}
                             height={96}
                             className="h-full w-full object-cover"
                             unoptimized
                           />
                         )
-                      ) : null}
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-[#9a958c]">No preview</div>
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <input
@@ -518,20 +548,28 @@ export default function AdminPage() {
                         }
                         className="w-full border-none bg-transparent text-lg font-bold text-[#1a1a1a] outline-none"
                       />
-                      <p className="mt-1 text-sm text-[#777]">Venue · Display</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <p className="mt-0.5 text-sm text-[#6b6560]">{loc}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                         <span
-                          className={`inline-flex items-center gap-2 text-sm ${online ? "text-emerald-600" : "text-red-500"}`}
+                          className={`inline-flex items-center gap-2 text-sm font-medium ${online ? "text-emerald-600" : "text-red-500"}`}
                         >
                           <span
-                            className={`h-2.5 w-2.5 rounded-full ${online ? "bg-emerald-500" : "bg-red-500"}`}
+                            className={`h-2 w-2 rounded-full ${online ? "bg-emerald-500" : "bg-red-500"}`}
                           />
                           {online ? "Online" : "Offline"}
                         </span>
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[#666]">
-                          Playing now
-                        </span>
-                        <span className="truncate text-sm text-[#444]">{filename}</span>
+                        {online ? (
+                          <>
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#666]">
+                              Playing now
+                            </span>
+                            <span className="truncate text-sm text-[#333]">{filename}</span>
+                          </>
+                        ) : (
+                          <span className="text-xs font-semibold uppercase tracking-wide text-red-500">
+                            Status: Check Connection
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
@@ -547,7 +585,7 @@ export default function AdminPage() {
                         <button
                           type="button"
                           onClick={() => onPickFile(screen.id)}
-                          className="rounded-full bg-monarch-gold-secondary px-5 py-2.5 text-sm font-medium text-[#3d3a35]"
+                          className="rounded-full bg-[#D9C8A9] px-5 py-2.5 text-sm font-semibold text-[#2a2723] transition hover:opacity-95"
                         >
                           Change Content
                         </button>
@@ -555,7 +593,7 @@ export default function AdminPage() {
                         <button
                           type="button"
                           disabled
-                          className="cursor-not-allowed rounded-full bg-[#e5e0d8] px-5 py-2.5 text-sm font-medium text-red-600"
+                          className="cursor-not-allowed rounded-full bg-[#e8e4dc] px-5 py-2.5 text-sm font-semibold text-red-600"
                         >
                           Check Connection
                         </button>
@@ -568,12 +606,15 @@ export default function AdminPage() {
           </motion.section>
 
           {/* Recently curated media */}
-          <section className="rounded-[28px] border border-[#ebe8e2] bg-white p-8 shadow-[0_8px_30px_rgba(0,0,0,0.06)]">
+          <motion.section
+            whileHover={{ boxShadow: "0 12px 40px rgba(0,0,0,0.08)" }}
+            className="rounded-[28px] border border-[#ebe8e2] bg-white p-8 shadow-[0_8px_30px_rgba(0,0,0,0.06)]"
+          >
             <div className="mb-6 flex items-center justify-between">
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#888]">
                 Recently Curated Media
               </div>
-              <button type="button" className="text-sm font-medium text-monarch-gold">
+              <button type="button" className="text-sm font-semibold text-[#C5A059] hover:underline">
                 View All
               </button>
             </div>
@@ -598,7 +639,7 @@ export default function AdminPage() {
                         unoptimized
                       />
                     )}
-                    <div className="absolute right-2 top-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-medium text-white">
+                    <div className="absolute right-2 top-2 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur-sm">
                       {item.kind === "video" ? "4K • 0:45" : "IMG • Static"}
                     </div>
                   </div>
@@ -608,7 +649,7 @@ export default function AdminPage() {
                     <button
                       type="button"
                       onClick={() => pushToAllScreens(item).catch(() => toast.error("Push failed"))}
-                      className="mt-4 w-full rounded-full bg-monarch-gold-secondary py-2.5 text-sm font-medium text-[#2a2723]"
+                      className="mt-4 w-full rounded-full bg-[#D9C8A9] py-2.5 text-sm font-semibold text-[#2a2723] transition hover:opacity-95"
                     >
                       Push to All Screens
                     </button>
@@ -619,7 +660,7 @@ export default function AdminPage() {
                 <p className="col-span-full text-sm text-[#777]">Upload files to populate your gallery.</p>
               )}
             </div>
-          </section>
+          </motion.section>
         </main>
       </div>
 
@@ -627,10 +668,10 @@ export default function AdminPage() {
       <button
         type="button"
         onClick={() => quickUploadInputRef.current?.click()}
-        className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-monarch-gold text-white shadow-lg transition hover:opacity-95"
+        className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#C5A059] text-white shadow-[0_8px_24px_rgba(197,160,89,0.45)] transition hover:opacity-95"
         aria-label="Add media"
       >
-        <Plus className="h-7 w-7" />
+        <Plus className="h-7 w-7 stroke-[2.5]" />
       </button>
 
       {/* Pair modal */}
